@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "alias": "finance",
+      "url": "http://127.0.0.1:18090/mcp",
+      "timeout_seconds": 10
+    }
+  ]
+}

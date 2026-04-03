@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: mcp-security-gateway
+data:
+  upstreams.json: |
+    {
+      "servers": [
+        {
+          "alias": "finance",
+          "url": "http://sample-server.mcp-security-gateway.svc.cluster.local:8090/mcp",
+          "timeout_seconds": 10,
+          "bearer_token_file": "/mnt/secrets-store/gateway-upstream-token"
+        }
+      ]
+    }
+  tool_policies.json: |
+    {
+      "tools": {
+        "finance.get_orders": {
+          "exposed": true,
+          "risk": "read",
+          "approval_required": false,
+          "required_roles": ["reader", "writer", "admin"],
+          "description_suffix": " Exposed through the security gateway as a read-only tool.",
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        "finance.get_customer_balance": {
+          "exposed": true,
+          "risk": "read",
+          "approval_required": false,
+          "required_roles": ["reader", "writer", "admin"],
+          "description_suffix": " Exposed through the security gateway as a read-only tool.",
+          "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        "finance.update_credit_limit": {
+          "exposed": true,
+          "risk": "write",
+          "approval_required": true,
+          "required_roles": ["writer", "admin"],
+          "description_suffix": " Requires writer role plus explicit approval.",
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "idempotentHint": false,
+            "openWorldHint": false
+          }
+        },
+        "finance.purge_order": {
+          "exposed": true,
+          "risk": "admin",
+          "approval_required": true,
+          "required_roles": ["admin"],
+          "description_suffix": " Restricted admin operation with mandatory approval.",
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": false
+          }
+        }
+      }
+    }

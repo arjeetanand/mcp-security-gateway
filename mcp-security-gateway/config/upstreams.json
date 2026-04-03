@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "alias": "finance",
+      "url": "http://sample-server:8090/mcp",
+      "timeout_seconds": 10
+    }
+  ]
+}

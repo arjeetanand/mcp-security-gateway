@@ -1,0 +1,32 @@
+services:
+  gateway:
+    build:
+      context: ./gateway
+    ports:
+      - "8080:8080"
+    environment:
+      UPSTREAM_SERVERS_FILE: /app/config/upstreams.json
+      TOOL_POLICY_FILE: /app/config/tool_policies.json
+      DATABASE_PATH: /app/data/gateway.db
+      OPA_URL: http://opa:8181/v1/data/mcp/authz/decision
+      ENABLE_FALLBACK_POLICY_ENGINE: "false"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data
+    depends_on:
+      - opa
+      - sample-server
+
+  sample-server:
+    build:
+      context: ./sample_server
+    ports:
+      - "8090:8090"
+
+  opa:
+    image: openpolicyagent/opa:latest
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./policy:/policies:ro
