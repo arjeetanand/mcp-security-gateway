@@ -11,6 +11,7 @@ BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8080"
 
 
 def rpc(client: httpx.Client, headers: dict[str, str], method: str, params: dict[str, Any] | None = None, rpc_id: int = 1) -> dict[str, Any]:
+    """Helper function that sends a JSON-RPC request to the gateway at a specified URL."""
     response = client.post(
         f"{BASE_URL}/mcp",
         headers=headers,
@@ -21,6 +22,7 @@ def rpc(client: httpx.Client, headers: dict[str, str], method: str, params: dict
 
 
 def main() -> None:
+    """Entry point for the smoke test script that executes a sequence of MCP operations."""
     with httpx.Client(timeout=10.0) as client:
         reader_headers = {"X-User-ID": "alice", "X-Roles": "reader"}
         writer_headers = {"X-User-ID": "bob", "X-Roles": "writer"}

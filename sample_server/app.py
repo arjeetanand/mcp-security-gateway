@@ -24,10 +24,12 @@ ORDERS = [
 
 
 def rpc_success(rpc_id: Any, result: Any) -> dict[str, Any]:
+    """Constructs a standard JSON-RPC 2.0 success response object."""
     return {"jsonrpc": "2.0", "id": rpc_id, "result": result}
 
 
 def rpc_error(rpc_id: Any, code: int, message: str) -> dict[str, Any]:
+    """Constructs a standard JSON-RPC 2.0 error response object."""
     return {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": code, "message": message}}
 
 
@@ -105,16 +107,19 @@ TOOLS = [
 
 
 def text_result(text: str) -> dict[str, Any]:
+    """Wraps a string into the standard MCP text content format."""
     return {"content": [{"type": "text", "text": text}], "isError": False}
 
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
+    """Provides a simple health check endpoint to verify service availability."""
     return {"status": "ok"}
 
 
 @app.post("/mcp")
 async def mcp(request: Request) -> JSONResponse:
+    """Main POST entry point for the sample server's MCP protocol communications."""
     payload = await request.json()
     if not isinstance(payload, dict):
         return JSONResponse(rpc_error(None, -32600, "invalid request"), status_code=400)

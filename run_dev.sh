@@ -21,6 +21,7 @@ echo "==== Starting MCP Security Gateway Local stack ===="
 mkdir -p "$PROJECT_ROOT/data"
 
 # Function to kill background processes on exit
+# Shuts down background server processes upon script termination.
 cleanup() {
     echo ""
     echo "Shutting down servers..."
