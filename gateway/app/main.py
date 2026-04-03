@@ -25,6 +25,7 @@ policy_engine = PolicyEngine(settings.opa_url)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Manages the application lifecycle, including initial startup logging and database initialization."""
     storage.log_event("startup", None, {"server": settings.server_name})
     yield
 
@@ -33,6 +34,7 @@ app = FastAPI(title="MCP Security Gateway", version="0.1.0", lifespan=lifespan)
 
 
 def audit(event_type: str, user: UserContext | None, payload: dict[str, Any]) -> None:
+    """Logs security-relevant events to both standard output (JSON) and the persistent database."""
     envelope = {
         "event_type": event_type,
         "user_id": user.user_id if user else None,
@@ -43,10 +45,12 @@ def audit(event_type: str, user: UserContext | None, payload: dict[str, Any]) ->
 
 
 def rpc_success(rpc_id: Any, result: Any) -> dict[str, Any]:
+    """Constructs a standard JSON-RPC 2.0 success response object."""
     return {"jsonrpc": "2.0", "id": rpc_id, "result": result}
 
 
 def rpc_error(rpc_id: Any, code: int, message: str, data: Any | None = None) -> dict[str, Any]:
+    """Constructs a standard JSON-RPC 2.0 error response object with optional detailed data."""
     payload: dict[str, Any] = {
         "jsonrpc": "2.0",
         "id": rpc_id,
@@ -58,6 +62,7 @@ def rpc_error(rpc_id: Any, code: int, message: str, data: Any | None = None) -> 
 
 
 def tool_error_result(message: str, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Formats tool execution errors according to the Model Context Protocol specification."""
     result: dict[str, Any] = {
         "content": [{"type": "text", "text": message}],
         "isError": True,
@@ -69,11 +74,13 @@ def tool_error_result(message: str, meta: dict[str, Any] | None = None) -> dict[
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
+    """Provides a simple health check endpoint to verify service availability."""
     return {"status": "ok"}
 
 
 @app.get("/admin/approvals")
 async def list_approvals(_: UserContext = Depends(require_admin)) -> list[dict[str, Any]]:
+    """Admin endpoint to retrieve all pending and historical tool approval requests."""
     return [asdict(record) for record in storage.list_approvals()]
 
 
@@ -83,6 +90,7 @@ async def approve_request(
     request: Request,
     admin: UserContext = Depends(require_admin),
 ) -> dict[str, Any]:
+    """Admin endpoint to approve a specific tool invocation request by ID."""
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     record = storage.update_approval_status(
         approval_id,
@@ -102,6 +110,7 @@ async def reject_request(
     request: Request,
     admin: UserContext = Depends(require_admin),
 ) -> dict[str, Any]:
+    """Admin endpoint to reject a specific tool invocation request by ID."""
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     record = storage.update_approval_status(
         approval_id,
@@ -116,6 +125,7 @@ async def reject_request(
 
 
 async def handle_initialize(rpc_id: Any) -> dict[str, Any]:
+    """Processes MCP 'initialize' requests to negotiate protocol version and capabilities."""
     result = {
         "protocolVersion": settings.protocol_version,
         "serverInfo": {"name": settings.server_name, "version": "0.1.0"},
@@ -125,12 +135,14 @@ async def handle_initialize(rpc_id: Any) -> dict[str, Any]:
 
 
 async def handle_tools_list(rpc_id: Any, user: UserContext) -> dict[str, Any]:
+    """Aggregates and returns the list of tools permitted for the current user's roles."""
     tools = await list_exposed_tools(user.roles)
     audit("tools_list", user, {"tool_count": len(tools)})
     return rpc_success(rpc_id, {"tools": tools})
 
 
 async def handle_tools_call(rpc_id: Any, params: dict[str, Any], user: UserContext) -> dict[str, Any]:
+    """Enforces security policies and manages the end-to-end execution flow of tool calls."""
     tool_name = params.get("name")
     if not isinstance(tool_name, str):
         return rpc_success(rpc_id, tool_error_result("tool name must be a string"))
@@ -211,6 +223,7 @@ async def handle_tools_call(rpc_id: Any, params: dict[str, Any], user: UserConte
 
 
 async def dispatch_rpc(message: dict[str, Any], user: UserContext) -> dict[str, Any]:
+    """Routes incoming JSON-RPC messages to their appropriate internal sub-handlers."""
     rpc_id = message.get("id")
     method = message.get("method")
     params = message.get("params", {})
@@ -228,6 +241,7 @@ async def dispatch_rpc(message: dict[str, Any], user: UserContext) -> dict[str, 
 
 @app.post("/mcp")
 async def mcp_endpoint(request: Request, user: UserContext = Depends(get_user_context)) -> JSONResponse:
+    """Main POST entry point for all incoming MCP-compliant protocol communications."""
     body = await request.json()
     if isinstance(body, list):
         responses = [await dispatch_rpc(message, user) for message in body]

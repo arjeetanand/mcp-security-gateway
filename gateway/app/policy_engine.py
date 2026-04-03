@@ -12,6 +12,7 @@ class PolicyEngine:
         self.opa_url = opa_url
 
     async def evaluate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Submits tool call context to OPA for authorization or uses fallback logic if OPA is unavailable."""
         if self.opa_url:
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
@@ -28,6 +29,7 @@ class PolicyEngine:
 
     @staticmethod
     def _fallback(payload: dict[str, Any]) -> dict[str, Any]:
+        """Implements role-based access control and approval checks when the external policy engine is bypassed."""
         required_roles = payload.get("required_roles", [])
         user_roles = payload.get("user", {}).get("roles", [])
         has_role = not required_roles or any(role in user_roles for role in required_roles)

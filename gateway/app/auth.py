@@ -13,6 +13,7 @@ class UserContext:
 
 
 async def get_user_context(request: Request) -> UserContext:
+    """Extracts user identity, roles, and display name from incoming request headers."""
     user_id = request.headers.get("x-user-id", "anonymous").strip() or "anonymous"
     display_name = request.headers.get("x-user-name", user_id).strip() or user_id
     roles_header = request.headers.get("x-roles", "")
@@ -21,6 +22,7 @@ async def get_user_context(request: Request) -> UserContext:
 
 
 async def require_admin(request: Request) -> UserContext:
+    """Dependency that ensures the authenticated user has administrative privileges."""
     user = await get_user_context(request)
     if "admin" not in user.roles:
         raise HTTPException(

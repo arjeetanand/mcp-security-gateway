@@ -10,6 +10,7 @@ from .config import load_tool_policies, load_upstreams
 
 
 def build_upstream_headers(server: dict[str, Any]) -> dict[str, str]:
+    """Prepares HTTP headers for upstream calls, including optional bearer token authentication."""
     headers = {str(k): str(v) for k, v in server.get("headers", {}).items()}
     bearer_token_file = server.get("bearer_token_file")
     if bearer_token_file:
@@ -20,6 +21,7 @@ def build_upstream_headers(server: dict[str, Any]) -> dict[str, str]:
 
 
 async def call_upstream(url: str, method: str, params: dict[str, Any], rpc_id: int | str | None = 1, timeout_seconds: int = 10, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Executes a POST request to an upstream MCP server and returns the parsed JSON-RPC response."""
     request_body = {
         "jsonrpc": "2.0",
         "id": rpc_id,
@@ -33,6 +35,7 @@ async def call_upstream(url: str, method: str, params: dict[str, Any], rpc_id: i
 
 
 async def list_exposed_tools(user_roles: list[str]) -> list[dict[str, Any]]:
+    """Queries all upstreams and filters tools based on global exposure and user role policies."""
     tool_policies = load_tool_policies()
     exposed_tools: list[dict[str, Any]] = []
     for server in load_upstreams():
@@ -70,6 +73,7 @@ async def list_exposed_tools(user_roles: list[str]) -> list[dict[str, Any]]:
 
 
 def resolve_tool(tool_name: str) -> tuple[dict[str, Any], dict[str, Any], str] | None:
+    """Identifies the correct upstream server and security policy for a given composite tool name."""
     if not isinstance(tool_name, str) or "." not in tool_name:
         return None
     tool_policies = load_tool_policies()
@@ -84,6 +88,7 @@ def resolve_tool(tool_name: str) -> tuple[dict[str, Any], dict[str, Any], str] |
 
 
 def canonical_arguments(arguments: dict[str, Any]) -> tuple[str, str]:
+    """Produces a sorted JSON string and unique SHA-256 hash for a dictionary of tool arguments."""
     import hashlib
 
     payload = json.dumps(arguments, sort_keys=True, separators=(",", ":"))

@@ -14,6 +14,7 @@ UTC = timezone.utc
 
 
 def utc_now() -> datetime:
+    """Utility function to get the current date and time in UTC with proper timezone information."""
     return datetime.now(tz=UTC)
 
 
@@ -33,6 +34,7 @@ class ApprovalRecord:
 
 class Storage:
     def __init__(self, db_path: str) -> None:
+        """Initializes the SQLite database connection, applies thread safety locks, and ensures tables exist."""
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -40,6 +42,7 @@ class Storage:
         self._init_db()
 
     def _init_db(self) -> None:
+        """Creates the 'approvals' and 'audit_events' tables if they do not already exist in the database."""
         with self._conn:
             self._conn.execute(
                 """
@@ -70,6 +73,7 @@ class Storage:
             )
 
     def log_event(self, event_type: str, user_id: str | None, payload: dict[str, Any]) -> None:
+        """Records a security or system event into the historical audit log table."""
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT INTO audit_events(created_at, event_type, user_id, payload_json) VALUES (?, ?, ?, ?)",
@@ -85,6 +89,7 @@ class Storage:
         arguments_hash: str,
         ttl_seconds: int = 900,
     ) -> ApprovalRecord:
+        """Retrieves an existing pending approval or creates a new one for a specific tool invocation."""
         expires_at = (utc_now() + timedelta(seconds=ttl_seconds)).isoformat()
         with self._lock:
             row = self._conn.execute(
@@ -126,6 +131,7 @@ class Storage:
             return self._row_to_record(row)
 
     def has_active_approval(self, user_id: str, tool_name: str, arguments_hash: str) -> bool:
+        """Checks if a valid, unexpired approval exists for a specific user and tool call signature."""
         with self._lock:
             row = self._conn.execute(
                 """
@@ -148,6 +154,7 @@ class Storage:
         note: str | None,
         extend_ttl_seconds: int = 900,
     ) -> ApprovalRecord | None:
+        """Updates a request status (e.g., 'approved') and optionally extends its expiration time."""
         with self._lock, self._conn:
             row = self._conn.execute(
                 "SELECT * FROM approvals WHERE approval_id = ?",
@@ -175,6 +182,7 @@ class Storage:
             return self._row_to_record(updated)
 
     def list_approvals(self) -> list[ApprovalRecord]:
+        """Retrieves all historical and pending approval records ordered by creation timestamp."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM approvals ORDER BY created_at DESC"
@@ -183,6 +191,7 @@ class Storage:
 
     @staticmethod
     def _row_to_record(row: sqlite3.Row) -> ApprovalRecord:
+        """Static helper to convert a SQLite row object into a structured ApprovalRecord dataclass."""
         return ApprovalRecord(
             approval_id=row["approval_id"],
             user_id=row["user_id"],

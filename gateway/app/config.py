@@ -24,13 +24,16 @@ settings = Settings()
 
 
 def load_json_file(path: str) -> dict[str, Any]:
+    """Loads and parses a JSON file from the filesystem with UTF-8 encoding."""
     payload = Path(path).read_text(encoding="utf-8")
     return json.loads(payload)
 
 
 def load_upstreams() -> list[dict[str, Any]]:
+    """Retrieves the list of configured upstream MCP servers from the settings file."""
     return load_json_file(settings.upstream_servers_file).get("servers", [])
 
 
 def load_tool_policies() -> dict[str, Any]:
+    """Retrieves the tool-specific security policies from the settings file."""
     return load_json_file(settings.tool_policy_file).get("tools", {})
