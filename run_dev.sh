@@ -12,8 +12,6 @@ export GATEWAY_PORT=18080
 export UPSTREAM_SERVERS_FILE="$PROJECT_ROOT/config/upstreams.local.json"
 export TOOL_POLICY_FILE="$PROJECT_ROOT/config/tool_policies.json"
 export DATABASE_PATH="$PROJECT_ROOT/data/gateway.local.db"
-export OPA_URL=""
-export ENABLE_FALLBACK_POLICY_ENGINE="true"
 
 echo "==== Starting MCP Security Gateway Local stack ===="
 

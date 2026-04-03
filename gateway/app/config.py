@@ -9,13 +9,10 @@ from typing import Any
 
 @dataclass(slots=True)
 class Settings:
+    """Application settings, loaded from environment variables where applicable."""
     upstream_servers_file: str = os.getenv("UPSTREAM_SERVERS_FILE", "/app/config/upstreams.json")
     tool_policy_file: str = os.getenv("TOOL_POLICY_FILE", "/app/config/tool_policies.json")
     database_path: str = os.getenv("DATABASE_PATH", "/app/data/gateway.db")
-    opa_url: str = os.getenv("OPA_URL", "")
-    enable_fallback_policy_engine: bool = os.getenv(
-        "ENABLE_FALLBACK_POLICY_ENGINE", "true"
-    ).lower() in {"1", "true", "yes"}
     server_name: str = os.getenv("SERVER_NAME", "mcp-security-gateway")
     protocol_version: str = os.getenv("MCP_PROTOCOL_VERSION", "2025-06-18")
 

@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("mcp-security-gateway")
 
 storage = Storage(settings.database_path)
-policy_engine = PolicyEngine(settings.opa_url)
+policy_engine = PolicyEngine()
 
 
 @asynccontextmanager
