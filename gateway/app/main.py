@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from .auth import UserContext, get_user_context, require_admin
 from .config import settings
@@ -30,7 +31,16 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MCP Security Gateway", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="MCP Security Gateway",
+    version="0.1.0",
+    lifespan=lifespan,
+    # This adds the global 'Authorize' button to Swagger UI
+    swagger_ui_parameters={"persistAuthorization": True},
+)
+
+# Define the security scheme for OpenAPI
+security = HTTPBearer()
 
 
 def audit(event_type: str, user: UserContext | None, payload: dict[str, Any]) -> None:
@@ -79,7 +89,10 @@ async def healthz() -> dict[str, str]:
 
 
 @app.get("/admin/approvals")
-async def list_approvals(_: UserContext = Depends(require_admin)) -> list[dict[str, Any]]:
+async def list_approvals(
+    _: UserContext = Depends(require_admin),
+    token: HTTPAuthorizationCredentials = Depends(security),
+) -> list[dict[str, Any]]:
     """Admin endpoint to retrieve all pending and historical tool approval requests."""
     return [asdict(record) for record in storage.list_approvals()]
 
@@ -89,6 +102,7 @@ async def approve_request(
     approval_id: str,
     request: Request,
     admin: UserContext = Depends(require_admin),
+    token: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict[str, Any]:
     """Admin endpoint to approve a specific tool invocation request by ID."""
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -109,6 +123,7 @@ async def reject_request(
     approval_id: str,
     request: Request,
     admin: UserContext = Depends(require_admin),
+    token: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict[str, Any]:
     """Admin endpoint to reject a specific tool invocation request by ID."""
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -240,7 +255,11 @@ async def dispatch_rpc(message: dict[str, Any], user: UserContext) -> dict[str, 
 
 
 @app.post("/mcp")
-async def mcp_endpoint(request: Request, user: UserContext = Depends(get_user_context)) -> JSONResponse:
+async def mcp_endpoint(
+    request: Request,
+    user: UserContext = Depends(get_user_context),
+    token: HTTPAuthorizationCredentials = Depends(security),
+) -> JSONResponse:
     """Main POST entry point for all incoming MCP-compliant protocol communications."""
     body = await request.json()
     if isinstance(body, list):
