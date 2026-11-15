@@ -8,7 +8,7 @@ The gateway places an explicit security control plane between an LLM host and up
 - **Read/write/admin separation**: Clear risk classification for every tool.
 - **Per-tool authorization**: Granular access control based on user identity.
 - **Human approval**: Mandatory admin sign-off for high-risk operations.
-- **Structured audit logging**: All security decisions are recorded for compliance.
+- **Structured audit logging**: Selected tool, discovery, and approval events are recorded for review.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ LLM Host / Agent Client
 ```text
 mcp-security-gateway/
 ├── README.md
-├── run_dev.sh           # Unified local development script
+├── run.sh               # Local development launcher (run_dev.sh is an alias)
 ├── config/              # Allowlist and risk policy files
 ├── gateway/             # Security Gateway (FastAPI)
 ├── sample_server/       # Sample Finance MCP Server (Upstream)
@@ -62,19 +62,38 @@ pip install -r gateway/requirements.txt
 ### 2. Start Services
 
 ```bash
-./run_dev.sh
+./run.sh
 ```
 
-This starts:
-- **Sample MCP Server** on `http://127.0.0.1:18090`
-- **Security Gateway** on `http://127.0.0.1:18080`
+This starts a loopback-only sample server and gateway using generated local test
+credentials and a disposable database under `.run/`. The stable ports are:
+
+| Instance | Gateway | Sample server |
+| --- | --- | --- |
+| Main: `./run.sh` | 4038 | 4039 |
+| Test: `./run.sh 5038` | 5038 | 5039 |
+| Test: `./run.sh 6038` | 6038 | 6039 |
+
+Running the same command again restarts only processes whose recorded marker,
+working directory, and listener prove they belong to this checkout; an unknown
+listener causes a conflict instead of being stopped. `./run.sh stop` stops the
+owned main instance, and `./run.sh stop 5038` stops the first test instance.
+The local SQLite file remains in `.run/` across restarts. Set `MCP_DEMO_PYTHON`
+to an existing compatible interpreter if the project has no `.venv`. The
+launcher uses `lsof` to verify ownership and must be able to inspect both ports.
+
+The launcher deliberately ignores `.env` and creates a fresh development JWT
+signing key on every start. The owner-readable key is stored in `.run/4038.secret`
+for the main instance; never use it or the sample dataset in production.
 
 ### 3. Run Smoke Test
 
 In a separate terminal, run the validation script to verify everything is working:
 
 ```bash
-.venv/bin/python scripts/smoke_test.py http://127.0.0.1:18080
+JWT_SECRET="$(cat .run/4038.secret)" JWT_ALGORITHM=HS256 JWT_AUDIENCE='' \
+  JWT_ROLES_CLAIM='https://mcp-gateway/roles' \
+  "${MCP_DEMO_PYTHON:-.venv/bin/python}" scripts/smoke_test.py http://127.0.0.1:4038
 ```
 
 The smoke test validates:
@@ -86,6 +105,11 @@ The smoke test validates:
 6. Administrative approval of pending requests
 7. Post-approval success of previously blocked tools
 
+Use the matching secret file and gateway port for either test instance. Each
+smoke run uses a new synthetic writer identity so it can request a fresh
+approval without deleting earlier records. The script is for the local HS256
+demo; it requires the same signing secret as the gateway.
+
 ## Security Model
 
 ### 1. Allowlist
@@ -95,15 +119,17 @@ Only tools declared in `config/tool_policies.json` are exposed. Everything else 
 Tools are classified as `read`, `write`, or `admin` to ensure appropriate guardrails.
 
 ### 3. Identity and Roles
-The gateway expects user identity and roles via request headers (emulating an identity-aware gateway):
-- `X-User-ID`: Unique identifier for the caller.
-- `X-Roles`: Comma-separated list of roles (e.g., `reader, writer, admin`).
+The gateway verifies a signed bearer JWT. Its `sub` claim identifies the user,
+and the configured `JWT_ROLES_CLAIM` supplies roles such as `reader`, `writer`,
+and `admin`. Signature, expiry, issued-at, and optional audience are validated.
 
 ### 4. Human-in-the-loop Approval
 High-risk tools (e.g., `destructive` actions) can be configured to require explicit human approval via the admin API before the gateway will proxy the call.
 
 ### 5. Persistent Audit Trail
-All decisions are logged to stdout and stored in a local SQLite database for auditing and forensics.
+Selected tool-list, policy decision, upstream error, and approval events are
+logged and stored in SQLite. Authentication failures and some malformed or
+unlisted tool requests return before an audit event is recorded.
 
 ---
 
