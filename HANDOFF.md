@@ -26,14 +26,15 @@ Verification on November 15, 2026:
   after independently verifying both listeners, working directories, and unique
   marker descriptors; no process was signaled during recovery. Launcher tests
   now use temporary state, and the final suite left the live state unchanged.
-- Python compilation and shell syntax checks passed. Tests used the existing
-  `/Users/arjeetanand/projects/briefly-voice/.venv/bin/python`; its dependency
-  versions may differ from this repository's pins.
+- Python compilation and shell syntax checks passed. Tests used an existing
+  compatible Python environment; its dependency versions may differ from this
+  repository's pins.
 
 Checkout: `codex/mcp-demo-jwt-fix`, based on `5e99d84`. The first task commit is
 `3239ec8`; the follow-up commit is `fix: preserve ownership during interrupted
-startup`. Inspect the current commit with `git log -1`. No changes were pushed
-or merged.
+startup`. Inspect the current commit with `git log -1`. The authorized branch
+targets a pull request to `main`; check the pull request for its current status.
+Merging requires explicit approval after the required checks.
 
 Run with `./run.sh` after preparing `.venv`, or set `MCP_DEMO_PYTHON` to an
 existing compatible interpreter. See README for smoke, stop, and test ports.

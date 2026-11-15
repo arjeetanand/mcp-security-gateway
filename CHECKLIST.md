@@ -11,3 +11,5 @@
 - [x] Clear only confirmed-stopped child records while preserving runtime data and any unconfirmed child.
 - [x] Verify interrupted local test startup and a subsequent restart and smoke run.
 - [x] Update JWT, audit-scope, port, and run instructions.
+- [x] Receive authorization to push and open a pull request targeting `main`.
+- [ ] Merge only after the required checks and explicit approval.
