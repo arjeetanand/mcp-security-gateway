@@ -16,10 +16,22 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / ".run"
 START = (
-    "import sys,types,uvicorn; "
+    "import signal,sys,types,uvicorn; "
+    "signal.pthread_sigmask(signal.SIG_UNBLOCK,{signal.SIGINT,signal.SIGTERM}); "
     "sys.modules['dotenv']=types.SimpleNamespace(load_dotenv=lambda **kwargs: None); "
     "uvicorn.run(sys.argv[1],host='127.0.0.1',port=int(sys.argv[2]),log_level='warning')"
 )
+
+
+def save_state(path: Path, state: dict) -> None:
+    fd, temporary = tempfile.mkstemp(prefix=f"{path.name}.", dir=RUNTIME)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(state, handle, indent=2)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def listeners(port: int) -> set[int]:
@@ -65,6 +77,7 @@ def owns(entry: dict, role: str, port: int) -> bool:
 def stop_existing(state: dict | None, main_port: int) -> None:
     services = (("gateway", main_port), ("sample", main_port + 1))
     to_stop = []
+    already_stopped = []
     for role, port in services:
         occupied = listeners(port)
         entry = (state or {}).get(role)
@@ -85,12 +98,33 @@ def stop_existing(state: dict | None, main_port: int) -> None:
             to_stop.append((pid, entry, role, port))
         elif occupied:
             raise RuntimeError(f"Port {port} has an unexpected listener; nothing was stopped.")
+        else:
+            already_stopped.append(role)
 
-    for pid, _, _, _ in to_stop:
-        os.kill(pid, signal.SIGTERM)
+    def forget(role: str) -> None:
+        if state is not None and role in state:
+            del state[role]
+            state_path = RUNTIME / f"{main_port}.state.json"
+            if state.get("project") == str(ROOT) and state_path.exists():
+                save_state(state_path, state)
+
+    for role in already_stopped:
+        forget(role)
+
+    for pid, entry, role, port in to_stop:
+        if active(pid):
+            if not owns(entry, role, port):
+                raise RuntimeError(f"Process ownership for port {port} changed; refusing to stop it.")
+            os.kill(pid, signal.SIGTERM)
     deadline = time.monotonic() + 10
     while to_stop and time.monotonic() < deadline:
-        to_stop = [item for item in to_stop if active(item[0]) and owns(item[1], item[2], item[3])]
+        remaining = []
+        for item in to_stop:
+            if active(item[0]):
+                remaining.append(item)
+            else:
+                forget(item[2])
+        to_stop = remaining
         if to_stop:
             time.sleep(0.1)
     if to_stop:
@@ -170,8 +204,8 @@ def main() -> None:
         if state is None and any(path.exists() for path in (secret_path, upstream_file, database_path)):
             raise RuntimeError("Existing runtime files have no ownership record; refusing to overwrite or use them.")
         stop_existing(state, main_port)
-        if state is None:
-            state_path.write_text(json.dumps({"project": str(ROOT)}))
+        state = {"project": str(ROOT)}
+        save_state(state_path, state)
 
         secret = secrets.token_urlsafe(32)
         temp_fd, temp_name = tempfile.mkstemp(prefix=f"{main_port}.secret.", dir=RUNTIME)
@@ -188,24 +222,69 @@ def main() -> None:
             "DATABASE_PATH": str(database_path),
         })
         started = []
+        persisted_roles = set()
+        previous_term = signal.getsignal(signal.SIGTERM)
+        def interrupt_startup(_signum, _frame):
+            raise InterruptedError("startup interrupted by SIGTERM")
+        signal.signal(signal.SIGTERM, interrupt_startup)
         try:
-            sample, sample_entry = start_service("sample", main_port + 1, environment)
-            started.append(sample)
-            wait_ready(sample, sample_entry, "sample", main_port + 1)
-            gateway, gateway_entry = start_service("gateway", main_port, environment)
-            started.append(gateway)
-            wait_ready(gateway, gateway_entry, "gateway", main_port)
-            state_path.write_text(json.dumps({"project": str(ROOT), "gateway": gateway_entry, "sample": sample_entry}, indent=2))
-        except Exception:
-            for process in reversed(started):
-                if process.poll() is None:
-                    process.terminate()
-            for process in started:
+            for role, port in (("sample", main_port + 1), ("gateway", main_port)):
+                old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
                 try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
+                    process, entry = start_service(role, port, environment)
+                    started.append((process, role))
+                    state[role] = entry
+                    save_state(state_path, state)
+                    persisted_roles = set(state) - {"project"}
+                finally:
+                    signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+                wait_ready(process, entry, role, port)
+        except BaseException as error:
+            old_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            failed = []
+            try:
+                for process, role in reversed(started):
+                    try:
+                        if process.poll() is None:
+                            process.terminate()
+                    except OSError:
+                        failed.append(role)
+                for process, role in started:
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        failed.append(role)
+                    else:
+                        state.pop(role, None)
+                        try:
+                            save_state(state_path, state)
+                        except OSError:
+                            failed.append(f"{role} ownership update")
+                        else:
+                            persisted_roles = set(state) - {"project"}
+                            failed = [item for item in failed if item != role]
+            finally:
+                signal.signal(signal.SIGINT, old_int)
+                signal.signal(signal.SIGTERM, interrupt_startup)
+            if failed:
+                unrecorded = [role for role in failed if role in state and role not in persisted_roles]
+                if unrecorded:
+                    try:
+                        save_state(state_path, state)
+                    except OSError as save_error:
+                        detail = "; ".join(
+                            f"{role}: pid={state[role]['pid']}, port={state[role]['port']}, "
+                            f"fd={state[role]['fd']}, marker={state[role]['marker']}"
+                            for role in unrecorded
+                        )
+                        raise RuntimeError(f"Started service did not stop and ownership state could not be saved; inspect manually: {detail}.") from save_error
+                if any(role in state for role in failed):
+                    raise RuntimeError(f"Started service did not stop: {', '.join(sorted(set(failed)))}; ownership remains recorded.") from error
+                raise RuntimeError(f"A service stopped but ownership state could not be updated: {', '.join(sorted(set(failed)))}.") from error
             raise
+        finally:
+            signal.signal(signal.SIGTERM, previous_term)
         print(f"Gateway: http://127.0.0.1:{main_port}")
         print(f"Sample server: http://127.0.0.1:{main_port + 1}")
         print(f"Development JWT secret file: {secret_path}")
